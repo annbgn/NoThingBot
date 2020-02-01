@@ -1,5 +1,6 @@
 - when game starts and it's window opens we've gotta check if there is no opened instance for this game already
 - exit game in the end (wrap process?)
 - make PATH not hardcoded but think of euristic algorithm which is very likely to find the game on any person PC in steam/steamapps/common/NO THING folder
-- requiremints (Pillow,  pywinauto)
+- requiremints (Pillow,  pywinauto, Numpy)
+- more flexible screen sizes
 -
