@@ -2,8 +2,8 @@ import ctypes
 import datetime
 import time
 
-from PIL import ImageGrab, ImageOps
 from numpy import *
+from PIL import ImageGrab, ImageOps
 from pywinauto.application import Application
 from pywinauto.keyboard import send_keys
 
@@ -13,7 +13,6 @@ SCREENSIZE = (
     ctypes.windll.user32.GetSystemMetrics(0),
     ctypes.windll.user32.GetSystemMetrics(1),
 )
-# print(SCREENSIZE)
 
 
 def start_app():
@@ -42,9 +41,7 @@ def restart_game():
 
 def check_failure() -> bool:
     red = ImageOps.grayscale(ImageGrab.grab(bbox=(0, 700, 350, 800)))
-    yellow = ImageOps.grayscale(
-        ImageGrab.grab(bbox=(1820, 700, 1920, 800))
-    )  # (SCREENSIZE[0]-100, 700, SCREENSIZE, 800)))
+    yellow = ImageOps.grayscale(ImageGrab.grab(bbox=(1820, 700, 1920, 800)))
     cyan = ImageOps.grayscale(ImageGrab.grab(bbox=(0, 1020, 350, 1060)))
     red_array = array(red.getcolors())
     yellow_array = array(yellow.getcolors())
@@ -53,7 +50,6 @@ def check_failure() -> bool:
     r = red_array.sum()
     y = yellow_array.sum()
     c = cyan_array.sum()
-    # print ("r = {}, y = {}, c = {} ".format(r,y,c))  -- lets us find out what are the numbers
 
     if r == 35076 and y == 10191 and c == 14179:
         print("fail! -- {}".format(datetime.datetime.now()))
