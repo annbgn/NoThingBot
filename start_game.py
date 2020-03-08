@@ -7,6 +7,8 @@ from PIL import ImageGrab, ImageOps
 from pywinauto.application import Application
 from pywinauto.keyboard import send_keys
 
+from edge_detection import detect_edge
+
 GAMEPATH = r"D:/Steam/steamapps/common/NO THING/no_thing.exe"
 
 SCREENSIZE = (
@@ -62,11 +64,17 @@ def main():
     start_game()
     time.sleep(5)
 
-    for _ in range(10 * 60):
+    for _ in range(10 * 60):  # todo replace with while
         is_fail = check_failure()
         if is_fail:
             restart_game()
-        time.sleep(0.1)
+        else:
+            t = time.localtime()
+            timestamp = time.strftime("%b-%d-%Y_%H%M%S", t)
+            current_screen = ImageGrab.grab()
+            current_screen.save(".\screenshots_\screen{}.jpg".format(timestamp))
+            detect_edge(current_screen)
+        time.sleep(0.3)
 
     exit_game()
 
