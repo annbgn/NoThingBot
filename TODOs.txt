@@ -3,4 +3,4 @@
 - make PATH not hardcoded but think of euristic algorithm which is very likely to find the game on any person PC in steam/steamapps/common/NO THING folder
 - requiremints (Pillow,  pywinauto, Numpy)
 - more flexible screen sizes
--
+- add log file
