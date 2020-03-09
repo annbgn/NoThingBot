@@ -2,7 +2,6 @@ import time
 
 import cv2
 import numpy
-from matplotlib import pyplot as plt
 
 
 def detect_edge(image):
@@ -33,7 +32,7 @@ def detect_edge(image):
     canny25 = cv2.Canny(cv_image_gray, lower25, upper25)
     t = time.localtime()
     timestamp = time.strftime("%b-%d-%Y_%H%M%S", t)
-    # hist = show_hist(cv_image_gray, lower, upper, timestamp)
+    # hist = get_hist(cv_image_gray)
     cv2.imwrite(
         ".\screenshots_\\full{}.jpg".format(timestamp),
         numpy.hstack(
@@ -44,25 +43,9 @@ def detect_edge(image):
                 cv2.cvtColor(canny25, cv2.COLOR_GRAY2BGR),
             ]
         ),
-    )  #  , cv2.cvtColor(hist, cv2.COLOR_GRAY2BGR)]))
+    )
 
 
-def show_hist(image, low_boundary, high_boundary, timestamp):
+def get_hist(image):
     hist = cv2.calcHist([image], [0], None, [256], [0, 256])
     return hist
-
-    plt.figure()
-
-    plt.title("Grayscale Histogram")
-
-    plt.xlabel("Bins")
-
-    plt.ylabel("# of Pixels")
-
-    plt.plot(hist)
-
-    plt.xlim([0, 256])
-
-    plt.savefig(".\screenshots_\hist{}.jpg".format(timestamp))
-
-    plt.close()

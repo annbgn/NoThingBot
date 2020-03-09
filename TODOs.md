@@ -5,5 +5,5 @@
 - more flexible screen sizes
 - add log file
 - auto compute good canny threshold values https://www.pyimagesearch.com/2015/04/06/zero-parameter-automatic-canny-edge-detection-with-python-and-opencv/ 
--- problem: low contrast screens tend to have no edges after applying canny. solution idea: make contrast higher
+  - problem: low contrast screens tend to have no edges after applying canny. solution idea: make contrast higher
 
