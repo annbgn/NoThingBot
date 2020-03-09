@@ -72,7 +72,7 @@ def main():
             t = time.localtime()
             timestamp = time.strftime("%b-%d-%Y_%H%M%S", t)
             current_screen = ImageGrab.grab()
-            current_screen.save(".\screenshots_\screen{}.jpg".format(timestamp))
+            # current_screen.save(".\screenshots_\screen{}.jpg".format(timestamp))
             detect_edge(current_screen)
         time.sleep(0.3)
 
