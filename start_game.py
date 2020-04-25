@@ -69,7 +69,7 @@ def main():
         if is_fail:
             restart_game()
         else:
-            current_screen = ImageGrab.grab()
+            current_screen = ImageGrab.grab(bbox=(0, 107, 1919, 755))
             detect_edge(current_screen)
         time.sleep(0.3)
 
