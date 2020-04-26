@@ -138,7 +138,7 @@ def draw_lines(canny, exclude=False):
 
     try:
         lines[0]
-        lines[0][0]
+        lines[0][3]
     except TypeError as exc:  # todo: why?
         logging.exception(exc)
         return result_image
