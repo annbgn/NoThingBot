@@ -1,3 +1,4 @@
+import copy
 import logging
 import time
 
@@ -25,16 +26,15 @@ def detect_edge(image):
     # принцип: яркое - уменьшать сигму, темное - увеличить сигму
     sigma1 = 0.10
     sigma2 = 0.30
-    sigma3 = 0.50
 
-    if v > 255 / 2:
+    if (
+        v > 255 / 2
+    ):  # todo: after removing second canny, upper/lower and sigma, replace with one-line if-else
         sigma1 = sigma1 / 2
         sigma2 = sigma2 / 2
-        sigma3 = sigma3 / 2
     else:
         sigma1 = sigma1 * 2
         sigma2 = sigma2 * 2
-        sigma3 = sigma3 * 2
 
     # apply automatic Canny edge detection using the computed median
     lower1 = int(max(0, (1.0 - sigma1) * v))
@@ -43,35 +43,39 @@ def detect_edge(image):
     lower2 = int(max(0, (1.0 - sigma2) * v))
     upper2 = int(min(255, (1.0 + sigma2) * v))
 
-    lower3 = int(max(0, (1.0 - sigma3) * v))
-    upper3 = int(min(255, (1.0 + sigma3) * v))
-
     canny1 = cv2.Canny(cv_image_gray, lower1, upper1)
-    canny3 = cv2.Canny(cv_image_gray, lower3, upper3)
 
     canny_wo_contrast = cv2.Canny(cv_image_gray, lower2, upper2)
 
+    with_lines = draw_lines(canny1)
+
     t = time.localtime()
     timestamp = time.strftime("%b-%d-%Y_%H%M%S", t)
-    # hist = get_hist(cv_image_gray)
+
     cv2.imwrite(
         ".\screenshots_\\full{}.jpg".format(timestamp),
         numpy.vstack(
             (
                 numpy.hstack(
                     [
-                        cv_image,
-                        cv2.cvtColor(cv_image_gray_wo_contrast, cv2.COLOR_GRAY2BGR),
-                        cv2.cvtColor(cv_image_gray, cv2.COLOR_GRAY2BGR),
-                        numpy.zeros(cv_image.shape, cv_image.dtype),
+                        cv_image,  # original
+                        cv2.cvtColor(
+                            cv_image_gray_wo_contrast, cv2.COLOR_GRAY2BGR
+                        ),  # b&w, w/o improved contrast
+                        cv2.cvtColor(
+                            cv_image_gray, cv2.COLOR_GRAY2BGR
+                        ),  # improved contrast
                     ]
                 ),
                 numpy.hstack(
                     [
-                        numpy.zeros(cv_image.shape, cv_image.dtype),
-                        cv2.cvtColor(canny_wo_contrast, cv2.COLOR_GRAY2BGR),
-                        cv2.cvtColor(canny1, cv2.COLOR_GRAY2BGR),
-                        cv2.cvtColor(canny3, cv2.COLOR_GRAY2BGR),
+                        cv2.cvtColor(
+                            canny_wo_contrast, cv2.COLOR_GRAY2BGR
+                        ),  # contours w/o contrast
+                        cv2.cvtColor(
+                            canny1, cv2.COLOR_GRAY2BGR
+                        ),  # contours with threshold (empirically ok    )
+                        cv2.cvtColor(with_lines, cv2.COLOR_GRAY2BGR),  # found lines
                     ]
                 ),
             )
@@ -105,7 +109,10 @@ def is_low_contrast(hist):
 
 
 def increase_contrast(image):
-    """image is b&w"""
+    """
+    :param image: b&w image
+    :return: image with higher contrast
+    """
     new_image = numpy.zeros(image.shape, image.dtype)
     mean = image.mean()
     alpha = 1.5 if mean < 128 else 1.2  # contrast. must be >1
@@ -114,3 +121,35 @@ def increase_contrast(image):
     for i in range(image.shape[0]):
         new_image[i] = numpy.clip(alpha * image[i] + beta, 0, 255)
     return new_image
+
+
+def draw_lines(canny, exclude=False):
+    """
+    :param canny: image with edges already detected. Must be GRAY. # todo: assert GRAY
+    :param exclude: remove lines which are possibly not connected with road
+    
+    :return: image with only lines
+    """
+    canny_copy = copy.deepcopy(canny)
+    lines = cv2.HoughLinesP(
+        canny_copy, 1, numpy.pi / 180, 100, minLineLength=20, maxLineGap=70
+    )
+    result_image = numpy.zeros(canny.shape, canny.dtype)
+
+    try:
+        lines[0]
+        lines[0][0]
+    except TypeError as exc:  # todo: why?
+        logging.exception(exc)
+        return result_image
+    else:
+        for i in lines:
+            x1, y1, x2, y2 = i[0]
+            if exclude:
+                # todo: filter lines: remove exerything above horizont, lines with impossible angle/tg, etc
+                pass
+            result_image = cv2.line(
+                result_image, (x1, y1), (x2, y2), (255, 255, 255), 1
+            )
+
+        return result_image
