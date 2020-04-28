@@ -12,8 +12,11 @@
 - remove color shift  UPD: ungoogleable ✗
 - make a folder for screenshots in code
 - add tests LOL
-- fix all this bad naming ✓
+  - use real data and check only functions, e.g amount of lines
+  - coverage?
+- fix all this bad naming 
 - create a video from screenshots & processed screenshots
 - add readme
 - async ???
-- is gaussian blur really needed? remove
+- is gaussian blur really needed? remove UPD: it wasn't really affecting  ✓
+- contours image AND corners from gray original = only needed corners. then apply dilate
