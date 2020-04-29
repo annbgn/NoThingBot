@@ -1,3 +1,4 @@
+from __future__ import division
 import copy
 import logging
 import time
@@ -15,7 +16,8 @@ def detect_edge(image):
     cv_image = numpy.array(image)
     cv_image = cv_image[:, :, ::-1].copy()
     cv_image_gray_wo_contrast = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
-    cv_image_gray = cv2.GaussianBlur(cv_image_gray_wo_contrast, (5, 5), 0)
+    # cv_image_gray = cv2.GaussianBlur(cv_image_gray_wo_contrast, (5, 5), 0)
+    cv_image_gray = cv_image_gray_wo_contrast
 
     if is_low_contrast(hist=get_hist(cv_image_gray)):
         cv_image_gray = increase_contrast(cv_image_gray)
@@ -47,7 +49,10 @@ def detect_edge(image):
 
     canny_wo_contrast = cv2.Canny(cv_image_gray, lower2, upper2)
 
-    with_lines = draw_lines(canny1)
+    with_lines, horizontals, intersections = draw_lines(canny1)
+
+    corners_from_lines = find_corners(with_lines)
+    corners_from_original = find_corners(cv_image_gray)
 
     t = time.localtime()
     timestamp = time.strftime("%b-%d-%Y_%H%M%S", t)
@@ -65,17 +70,40 @@ def detect_edge(image):
                         cv2.cvtColor(
                             cv_image_gray, cv2.COLOR_GRAY2BGR
                         ),  # improved contrast
+                        # cv2.cvtColor(corners_from_original, cv2.COLOR_GRAY2BGR), # corners
+                    ]
+                ),
+                numpy.hstack(
+                    [
+                        # cv2.cvtColor(canny_wo_contrast, cv2.COLOR_GRAY2BGR),  # contours w/o contrast
+                        cv2.cvtColor(
+                            canny1, cv2.COLOR_GRAY2BGR
+                        ),  # contours with threshold (empirically ok    )
+                        cv2.cvtColor(with_lines, cv2.COLOR_GRAY2BGR),  # found lines
+                        cv2.cvtColor(
+                            horizontals, cv2.COLOR_GRAY2BGR
+                        ),  # only horisontal lines
+                        # cv2.cvtColor(corners_from_lines, cv2.COLOR_GRAY2BGR),  # corners
+                        # cv2.cvtColor(numpy.minimum(corners_from_original, corners_from_lines), cv2.COLOR_GRAY2BGR),  # AND
                     ]
                 ),
                 numpy.hstack(
                     [
                         cv2.cvtColor(
-                            canny_wo_contrast, cv2.COLOR_GRAY2BGR
-                        ),  # contours w/o contrast
+                            corners_from_original, cv2.COLOR_GRAY2BGR
+                        ),  # corners from bw image
+                        cv2.cvtColor(corners_from_lines, cv2.COLOR_GRAY2BGR),  # corners
                         cv2.cvtColor(
-                            canny1, cv2.COLOR_GRAY2BGR
-                        ),  # contours with threshold (empirically ok    )
-                        cv2.cvtColor(with_lines, cv2.COLOR_GRAY2BGR),  # found lines
+                            numpy.minimum(corners_from_original, corners_from_lines),
+                            cv2.COLOR_GRAY2BGR,
+                        ),  # AND
+                    ]
+                ),
+                numpy.hstack(
+                    [
+                        cv2.cvtColor(intersections, cv2.COLOR_GRAY2BGR),  # intersections of horizontal lines
+                        cv2.cvtColor(with_lines, cv2.COLOR_GRAY2BGR),  # tmp
+                        cv2.cvtColor(numpy.zeros(intersections.shape, intersections.dtype),cv2.COLOR_GRAY2BGR,),
                     ]
                 ),
             )
@@ -132,24 +160,66 @@ def draw_lines(canny, exclude=False):
     """
     canny_copy = copy.deepcopy(canny)
     lines = cv2.HoughLinesP(
-        canny_copy, 1, numpy.pi / 180, 100, minLineLength=20, maxLineGap=70
-    )
-    result_image = numpy.zeros(canny.shape, canny.dtype)
+        canny_copy.dilate(), 1, numpy.pi / 180, 100, minLineLength=20, maxLineGap=70
+    ) # dilate for finding intersections
+    image_with_lines = numpy.zeros(canny.shape, canny.dtype)
 
     try:
         lines[0]
-        lines[0][3]
+        # lines[0][3]
     except TypeError as exc:  # todo: why?
         logging.exception(exc)
-        return result_image
+        return image_with_lines, image_with_lines  # both are just zeros
     else:
         for i in lines:
             x1, y1, x2, y2 = i[0]
             if exclude:
-                # todo: filter lines: remove exerything above horizont, lines with impossible angle/tg, etc
+                # todo: filter lines: remove everything above horizon, lines with impossible angle/tg, etc
                 pass
-            result_image = cv2.line(
-                result_image, (x1, y1), (x2, y2), (255, 255, 255), 1
+            image_with_lines = cv2.line(
+                image_with_lines, (x1, y1), (x2, y2), (255, 255, 255), 1
             )
 
-        return result_image
+        image_with_horizontals = numpy.zeros(canny.shape, canny.dtype)
+        image_wo_horizontals = numpy.zeros(canny.shape, canny.dtype)
+        for i in lines:
+            x1, y1, x2, y2 = i[0]
+            if exclude:
+                # todo: filter lines: remove everything above horizon, lines with impossible angle/tg, etc
+                pass
+            if y1 == y2:
+                image_with_horizontals = cv2.line(
+                    image_with_horizontals, (x1 , y1), (x2, y2), (255, 255, 255), 1
+                )
+            else:
+                image_wo_horizontals = cv2.line(
+                    image_wo_horizontals, (x1, y1), (x2, y2), (255, 255, 255), 1
+                )
+        image_intersection_points = image_with_horizontals/2 + image_wo_horizontals/2
+        image_intersection_points[image_intersection_points < 255] = 0
+        image_intersection_points = image_intersection_points.astype(canny.dtype)  # 'uint8'
+        new_image = numpy.zeros(canny.shape, canny.dtype)
+        intersections = cv2.dilate(image_intersection_points, None, dst=new_image, iterations=2)
+
+        return image_with_lines, image_with_horizontals, intersections
+
+
+def find_corners(image):
+    """
+    :param image: b&w image
+    :return:
+    """
+    gray = copy.deepcopy(image)
+    gray = numpy.float32(gray)
+    dst = cv2.cornerHarris(gray, 2, 3, 0.04)
+
+    corners_marked = mark_corners(gray, dst)
+
+    return corners_marked
+
+
+def mark_corners(gray, dst):
+    new_image = numpy.zeros(gray.shape, gray.dtype)
+    new_image[dst > 0.01 * dst.max()] = 255
+    cv2.dilate(new_image, None, dst=new_image, iterations=2)  # makes dots bolder
+    return new_image
