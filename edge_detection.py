@@ -1,3 +1,4 @@
+from __future__ import division
 import copy
 import logging
 import time
@@ -48,7 +49,7 @@ def detect_edge(image):
 
     canny_wo_contrast = cv2.Canny(cv_image_gray, lower2, upper2)
 
-    with_lines, horizontals = draw_lines(canny1)
+    with_lines, horizontals, intersections = draw_lines(canny1)
 
     corners_from_lines = find_corners(with_lines)
     corners_from_original = find_corners(cv_image_gray)
@@ -90,12 +91,19 @@ def detect_edge(image):
                     [
                         cv2.cvtColor(
                             corners_from_original, cv2.COLOR_GRAY2BGR
-                        ),  # only horisontal lines
+                        ),  # corners from bw image
                         cv2.cvtColor(corners_from_lines, cv2.COLOR_GRAY2BGR),  # corners
                         cv2.cvtColor(
                             numpy.minimum(corners_from_original, corners_from_lines),
                             cv2.COLOR_GRAY2BGR,
                         ),  # AND
+                    ]
+                ),
+                numpy.hstack(
+                    [
+                        cv2.cvtColor(intersections, cv2.COLOR_GRAY2BGR),  # intersections of horizontal lines
+                        cv2.cvtColor(with_lines, cv2.COLOR_GRAY2BGR),  # tmp
+                        cv2.cvtColor(numpy.zeros(intersections.shape, intersections.dtype),cv2.COLOR_GRAY2BGR,),
                     ]
                 ),
             )
@@ -152,8 +160,8 @@ def draw_lines(canny, exclude=False):
     """
     canny_copy = copy.deepcopy(canny)
     lines = cv2.HoughLinesP(
-        canny_copy, 1, numpy.pi / 180, 100, minLineLength=20, maxLineGap=70
-    )
+        canny_copy.dilate(), 1, numpy.pi / 180, 100, minLineLength=20, maxLineGap=70
+    ) # dilate for finding intersections
     image_with_lines = numpy.zeros(canny.shape, canny.dtype)
 
     try:
@@ -173,6 +181,7 @@ def draw_lines(canny, exclude=False):
             )
 
         image_with_horizontals = numpy.zeros(canny.shape, canny.dtype)
+        image_wo_horizontals = numpy.zeros(canny.shape, canny.dtype)
         for i in lines:
             x1, y1, x2, y2 = i[0]
             if exclude:
@@ -180,10 +189,19 @@ def draw_lines(canny, exclude=False):
                 pass
             if y1 == y2:
                 image_with_horizontals = cv2.line(
-                    image_with_horizontals, (x1, y1), (x2, y2), (255, 255, 255), 1
+                    image_with_horizontals, (x1 , y1), (x2, y2), (255, 255, 255), 1
                 )
+            else:
+                image_wo_horizontals = cv2.line(
+                    image_wo_horizontals, (x1, y1), (x2, y2), (255, 255, 255), 1
+                )
+        image_intersection_points = image_with_horizontals/2 + image_wo_horizontals/2
+        image_intersection_points[image_intersection_points < 255] = 0
+        image_intersection_points = image_intersection_points.astype(canny.dtype)  # 'uint8'
+        new_image = numpy.zeros(canny.shape, canny.dtype)
+        intersections = cv2.dilate(image_intersection_points, None, dst=new_image, iterations=2)
 
-        return image_with_lines, image_with_horizontals
+        return image_with_lines, image_with_horizontals, intersections
 
 
 def find_corners(image):
