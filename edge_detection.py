@@ -1,7 +1,9 @@
 from __future__ import division
+
 import copy
 import logging
 import time
+from math import sqrt
 
 import cv2
 import numpy
@@ -49,7 +51,7 @@ def detect_edge(image):
 
     canny_wo_contrast = cv2.Canny(cv_image_gray, lower2, upper2)
 
-    with_lines, horizontals, intersections = draw_lines(canny1)
+    with_lines, horizontals, intersections, only_corners = draw_lines(canny1)
 
     corners_from_lines = find_corners(with_lines)
     corners_from_original = find_corners(cv_image_gray)
@@ -80,9 +82,7 @@ def detect_edge(image):
                             canny1, cv2.COLOR_GRAY2BGR
                         ),  # contours with threshold (empirically ok    )
                         cv2.cvtColor(with_lines, cv2.COLOR_GRAY2BGR),  # found lines
-                        cv2.cvtColor(
-                            horizontals, cv2.COLOR_GRAY2BGR
-                        ),  # only horisontal lines
+                        cv2.cvtColor(horizontals, cv2.COLOR_GRAY2BGR),  # only horisontal lines
                         # cv2.cvtColor(corners_from_lines, cv2.COLOR_GRAY2BGR),  # corners
                         # cv2.cvtColor(numpy.minimum(corners_from_original, corners_from_lines), cv2.COLOR_GRAY2BGR),  # AND
                     ]
@@ -101,9 +101,11 @@ def detect_edge(image):
                 ),
                 numpy.hstack(
                     [
-                        cv2.cvtColor(intersections, cv2.COLOR_GRAY2BGR),  # intersections of horizontal lines
+                        cv2.cvtColor(
+                            intersections, cv2.COLOR_GRAY2BGR
+                        ),  # intersections of horizontal lines
                         cv2.cvtColor(with_lines, cv2.COLOR_GRAY2BGR),  # tmp
-                        cv2.cvtColor(numpy.zeros(intersections.shape, intersections.dtype),cv2.COLOR_GRAY2BGR,),
+                        cv2.cvtColor(only_corners,cv2.COLOR_GRAY2BGR),  # only crossing pair of lines
                     ]
                 ),
             )
@@ -159,9 +161,7 @@ def draw_lines(canny, exclude=False):
     :return: image with only lines
     """
     canny_copy = copy.deepcopy(canny)
-    lines = cv2.HoughLinesP(
-        canny_copy.dilate(), 1, numpy.pi / 180, 100, minLineLength=20, maxLineGap=70
-    ) # dilate for finding intersections
+    lines = cv2.HoughLinesP(canny_copy, 1, numpy.pi / 180, 100, minLineLength=20, maxLineGap=70)  # dilate to increase probability of intersection?/
     image_with_lines = numpy.zeros(canny.shape, canny.dtype)
 
     try:
@@ -182,26 +182,58 @@ def draw_lines(canny, exclude=False):
 
         image_with_horizontals = numpy.zeros(canny.shape, canny.dtype)
         image_wo_horizontals = numpy.zeros(canny.shape, canny.dtype)
+        horizontals = []
+        not_horizontals = []
         for i in lines:
             x1, y1, x2, y2 = i[0]
             if exclude:
                 # todo: filter lines: remove everything above horizon, lines with impossible angle/tg, etc
                 pass
             if y1 == y2:
+                horizontals.append(i)
                 image_with_horizontals = cv2.line(
                     image_with_horizontals, (x1 , y1), (x2, y2), (255, 255, 255), 1
                 )
             else:
+                not_horizontals.append(i)
                 image_wo_horizontals = cv2.line(
                     image_wo_horizontals, (x1, y1), (x2, y2), (255, 255, 255), 1
                 )
         image_intersection_points = image_with_horizontals/2 + image_wo_horizontals/2
         image_intersection_points[image_intersection_points < 255] = 0
-        image_intersection_points = image_intersection_points.astype(canny.dtype)  # 'uint8'
-        new_image = numpy.zeros(canny.shape, canny.dtype)
-        intersections = cv2.dilate(image_intersection_points, None, dst=new_image, iterations=2)
+        image_intersection_points = image_intersection_points.astype(
+            canny.dtype
+        )  # 'uint8'
 
-        return image_with_lines, image_with_horizontals, intersections
+        dilated = numpy.zeros(canny.shape, canny.dtype)
+        dilated = cv2.dilate(image_intersection_points, None, dst = dilated, iterations=2)
+        intersection_points = numpy.where(dilated == [255])
+        intersection_points = zip(intersection_points[0], intersection_points[1])
+        matching_lines = []
+        for x, y in intersection_points:
+            for hor in horizontals:
+                for nhor in not_horizontals:
+                    print('\n')
+                    if is_crossing(x, y, hor, nhor):
+                        matching_lines += ((x, y), hor, nhor)
+        # print(matching_lines)
+        only_corners = numpy.zeros(canny.shape, canny.dtype)
+        for i in matching_lines:
+            hx1, hy1, hx2, hy2 = i[1][0]
+            only_corners = cv2.line(
+                only_corners, (hx1, hy1), (hx2, hy2), (255, 255, 255), 1
+            )
+            nhx1, nhy1, nhx2, nhy2 = i[2][0]
+            only_corners = cv2.line(
+                only_corners, (nhx1, nhy1), (nhx2, nhy2), (255, 255, 255), 1
+            )
+
+        new_image = numpy.zeros(canny.shape, canny.dtype)
+        drawn_intersections = cv2.dilate(
+            image_intersection_points, None, dst=new_image, iterations=2
+        )
+
+        return image_with_lines, image_with_horizontals, drawn_intersections, only_corners
 
 
 def find_corners(image):
@@ -223,3 +255,28 @@ def mark_corners(gray, dst):
     new_image[dst > 0.01 * dst.max()] = 255
     cv2.dilate(new_image, None, dst=new_image, iterations=2)  # makes dots bolder
     return new_image
+
+
+def is_crossing(x, y, line1, line2):
+    # todo think if check for line1 == line2 or line1 is parallel to line2 is needed
+    # solution: no, because this func is used only for horizontal and non-horizontal lines
+    if is_in_segement(x, y, line1) and is_in_segement(x, y, line2):
+        return True
+    return False
+
+
+def is_in_segement(x, y, line):
+    """
+    checks if a point (x,y) belongs to segment
+    compares if the distance between start of segment to (x,y) + the distance between (x,y) and end of segment = full segment length
+    """
+    x1, y1, x2, y2 = line[0]
+    print( hypotenuse(x1, y1, x, y) , ' + ', hypotenuse(x2, y2, x, y), ' == ', hypotenuse(x1, y1, x2, y2))
+    return hypotenuse(x1, y1, x, y) + hypotenuse(x2, y2, x, y) == hypotenuse(x1, y1, x2, y2)
+
+
+def hypotenuse(x1, y1, x2, y2):
+    print(x1, y1, x2, y2)
+    res = sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
+    print(res)
+    return res
