@@ -1,5 +1,5 @@
 from __future__ import division
-
+import itertools
 import copy
 import logging
 import time
@@ -51,7 +51,7 @@ def detect_edge(image):
 
     canny_wo_contrast = cv2.Canny(cv_image_gray, lower2, upper2)
 
-    with_lines, horizontals, intersections, only_corners = draw_lines(canny1)
+    with_lines, horizontals, intersections = draw_lines(canny1)
 
     corners_from_lines = find_corners(with_lines)
     corners_from_original = find_corners(cv_image_gray)
@@ -105,7 +105,8 @@ def detect_edge(image):
                             intersections, cv2.COLOR_GRAY2BGR
                         ),  # intersections of horizontal lines
                         cv2.cvtColor(with_lines, cv2.COLOR_GRAY2BGR),  # tmp
-                        cv2.cvtColor(only_corners,cv2.COLOR_GRAY2BGR),  # only crossing pair of lines
+                        cv2.cvtColor(with_lines, cv2.COLOR_GRAY2BGR),  # tmp
+                        # cv2.cvtColor(cv2.UMat(only_corners),cv2.COLOR_GRAY2BGR),  # only crossing pair of lines
                     ]
                 ),
             )
@@ -204,7 +205,7 @@ def draw_lines(canny, exclude=False):
         image_intersection_points = image_intersection_points.astype(
             canny.dtype
         )  # 'uint8'
-
+        '''
         dilated = numpy.zeros(canny.shape, canny.dtype)
         dilated = cv2.dilate(image_intersection_points, None, dst = dilated, iterations=2)
         intersection_points = numpy.where(dilated == [255])
@@ -227,13 +228,33 @@ def draw_lines(canny, exclude=False):
             only_corners = cv2.line(
                 only_corners, (nhx1, nhy1), (nhx2, nhy2), (255, 255, 255), 1
             )
+        '''
+        product = itertools.product(horizontals, not_horizontals)
+        for hor, nhor in product:
+            tmp1 = numpy.zeros(canny.shape, canny.dtype)
+            tmp2 = numpy.zeros(canny.shape, canny.dtype)
+            hx1, hy1, hx2, hy2 = hor[0]
+            nhx1, nhy1, nhx2, nhy2 = nhor[0]
+            cv2.line(tmp1, (hx1, hy1), (hx2, hy2), 255, 5)
+            cv2.line(tmp2, (nhx1, nhy1), (nhx2, nhy2), (255, 255, 255), 5)
+            tmp = tmp1 / 2 + tmp2 / 2
+            tmp[tmp < 255] = 0
+            tmp = tmp.astype(
+                canny.dtype
+            )  # 'uint8'
+            if tmp.any():
+                pass
+                angle = 
+                # cv2.imwrite('./tmp/debug_{}_{}_{}_{}_{}_{}_{}_{}.jpg'.format(hx1, hy1, hx2, hy2, nhx1, nhy1, nhx2, nhy2 ), numpy.hstack((tmp1, tmp2)))
+                # todo оптимизация: тут убрать все оставшиеся itertuls.product, содержащие hor или nhor
+
 
         new_image = numpy.zeros(canny.shape, canny.dtype)
         drawn_intersections = cv2.dilate(
             image_intersection_points, None, dst=new_image, iterations=2
         )
 
-        return image_with_lines, image_with_horizontals, drawn_intersections, only_corners
+        return image_with_lines, image_with_horizontals, drawn_intersections
 
 
 def find_corners(image):

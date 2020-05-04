@@ -70,7 +70,13 @@ def main():
             restart_game()
         else:
             current_screen = ImageGrab.grab(bbox=(0, 107, 1919, 755))
-            detect_edge(current_screen)
+            try:
+                detect_edge(current_screen)
+            except Exception as exc:
+                print(exc)
+                import winsound
+                winsound.Beep(500, 1000)
+                raise Exception
         time.sleep(0.3)  # todo 0.1 or less
 
     exit_game()
