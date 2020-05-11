@@ -3,7 +3,9 @@ import itertools
 import copy
 import logging
 import time
-from math import sqrt
+from math import sqrt, acos
+from pywinauto.keyboard import send_keys
+import winsound
 
 import cv2
 import numpy
@@ -14,6 +16,10 @@ logging.basicConfig(
 
 
 def detect_edge(image):
+
+    t = time.localtime()
+    timestamp = time.strftime("%b-%d-%Y_%H%M%S", t)
+
     image = image.convert("RGB")
     cv_image = numpy.array(image)
     cv_image = cv_image[:, :, ::-1].copy()
@@ -51,30 +57,28 @@ def detect_edge(image):
 
     canny_wo_contrast = cv2.Canny(cv_image_gray, lower2, upper2)
 
-    with_lines, horizontals, intersections = draw_lines(canny1)
+    with_lines = draw_lines(canny1, timestamp=timestamp)
 
     corners_from_lines = find_corners(with_lines)
     corners_from_original = find_corners(cv_image_gray)
 
-    t = time.localtime()
-    timestamp = time.strftime("%b-%d-%Y_%H%M%S", t)
 
     cv2.imwrite(
         ".\screenshots_\\full{}.jpg".format(timestamp),
         numpy.vstack(
             (
-                numpy.hstack(
-                    [
-                        cv_image,  # original
-                        cv2.cvtColor(
-                            cv_image_gray_wo_contrast, cv2.COLOR_GRAY2BGR
-                        ),  # b&w, w/o improved contrast
-                        cv2.cvtColor(
-                            cv_image_gray, cv2.COLOR_GRAY2BGR
-                        ),  # improved contrast
-                        # cv2.cvtColor(corners_from_original, cv2.COLOR_GRAY2BGR), # corners
-                    ]
-                ),
+                # numpy.hstack(
+                #     [
+                #         cv_image,  # original
+                #         cv2.cvtColor(
+                #             cv_image_gray_wo_contrast, cv2.COLOR_GRAY2BGR
+                #         ),  # b&w, w/o improved contrast
+                #         cv2.cvtColor(
+                #             cv_image_gray, cv2.COLOR_GRAY2BGR
+                #         ),  # improved contrast
+                #         # cv2.cvtColor(corners_from_original, cv2.COLOR_GRAY2BGR), # corners
+                #     ]
+                # ),
                 numpy.hstack(
                     [
                         # cv2.cvtColor(canny_wo_contrast, cv2.COLOR_GRAY2BGR),  # contours w/o contrast
@@ -82,33 +86,33 @@ def detect_edge(image):
                             canny1, cv2.COLOR_GRAY2BGR
                         ),  # contours with threshold (empirically ok    )
                         cv2.cvtColor(with_lines, cv2.COLOR_GRAY2BGR),  # found lines
-                        cv2.cvtColor(horizontals, cv2.COLOR_GRAY2BGR),  # only horisontal lines
+                        cv2.cvtColor(numpy.zeros(with_lines.shape, with_lines.dtype), cv2.COLOR_GRAY2BGR),  # only horisontal lines
                         # cv2.cvtColor(corners_from_lines, cv2.COLOR_GRAY2BGR),  # corners
                         # cv2.cvtColor(numpy.minimum(corners_from_original, corners_from_lines), cv2.COLOR_GRAY2BGR),  # AND
                     ]
                 ),
-                numpy.hstack(
-                    [
-                        cv2.cvtColor(
-                            corners_from_original, cv2.COLOR_GRAY2BGR
-                        ),  # corners from bw image
-                        cv2.cvtColor(corners_from_lines, cv2.COLOR_GRAY2BGR),  # corners
-                        cv2.cvtColor(
-                            numpy.minimum(corners_from_original, corners_from_lines),
-                            cv2.COLOR_GRAY2BGR,
-                        ),  # AND
-                    ]
-                ),
-                numpy.hstack(
-                    [
-                        cv2.cvtColor(
-                            intersections, cv2.COLOR_GRAY2BGR
-                        ),  # intersections of horizontal lines
-                        cv2.cvtColor(with_lines, cv2.COLOR_GRAY2BGR),  # tmp
-                        cv2.cvtColor(with_lines, cv2.COLOR_GRAY2BGR),  # tmp
-                        # cv2.cvtColor(cv2.UMat(only_corners),cv2.COLOR_GRAY2BGR),  # only crossing pair of lines
-                    ]
-                ),
+                # numpy.hstack(
+                #     [
+                #         cv2.cvtColor(
+                #             corners_from_original, cv2.COLOR_GRAY2BGR
+                #         ),  # corners from bw image
+                #         cv2.cvtColor(corners_from_lines, cv2.COLOR_GRAY2BGR),  # corners
+                #         cv2.cvtColor(
+                #             numpy.minimum(corners_from_original, corners_from_lines),
+                #             cv2.COLOR_GRAY2BGR,
+                #         ),  # AND
+                #     ]
+                # ),
+                # numpy.hstack(
+                #     [
+                #         cv2.cvtColor(
+                #             intersections, cv2.COLOR_GRAY2BGR
+                #         ),  # intersections of horizontal lines
+                #         cv2.cvtColor(with_lines, cv2.COLOR_GRAY2BGR),  # tmp
+                #         cv2.cvtColor(with_lines, cv2.COLOR_GRAY2BGR),  # tmp
+                #         # cv2.cvtColor(cv2.UMat(only_corners),cv2.COLOR_GRAY2BGR),  # only crossing pair of lines
+                #     ]
+                # ),
             )
         ),
     )
@@ -154,7 +158,7 @@ def increase_contrast(image):
     return new_image
 
 
-def draw_lines(canny, exclude=False):
+def draw_lines(canny, exclude=False, timestamp = None):
     """
     :param canny: image with edges already detected. Must be GRAY. # todo: assert GRAY
     :param exclude: remove lines which are possibly not connected with road
@@ -180,11 +184,12 @@ def draw_lines(canny, exclude=False):
             image_with_lines = cv2.line(
                 image_with_lines, (x1, y1), (x2, y2), (255, 255, 255), 1
             )
-
-        image_with_horizontals = numpy.zeros(canny.shape, canny.dtype)
-        image_wo_horizontals = numpy.zeros(canny.shape, canny.dtype)
+        #
+        # image_with_horizontals = numpy.zeros(canny.shape, canny.dtype)
+        # image_wo_horizontals = numpy.zeros(canny.shape, canny.dtype)
         horizontals = []
-        not_horizontals = []
+        not_horizontals_on_the_right = []
+        not_horizontals_on_the_left = []
         for i in lines:
             x1, y1, x2, y2 = i[0]
             if exclude:
@@ -192,19 +197,23 @@ def draw_lines(canny, exclude=False):
                 pass
             if y1 == y2:
                 horizontals.append(i)
-                image_with_horizontals = cv2.line(
-                    image_with_horizontals, (x1 , y1), (x2, y2), (255, 255, 255), 1
-                )
+                # image_with_horizontals = cv2.line(
+                #     image_with_horizontals, (x1 , y1), (x2, y2), (255, 255, 255), 1
+                # )
             else:
-                not_horizontals.append(i)
-                image_wo_horizontals = cv2.line(
-                    image_wo_horizontals, (x1, y1), (x2, y2), (255, 255, 255), 1
-                )
-        image_intersection_points = image_with_horizontals/2 + image_wo_horizontals/2
-        image_intersection_points[image_intersection_points < 255] = 0
-        image_intersection_points = image_intersection_points.astype(
-            canny.dtype
-        )  # 'uint8'
+                if x1 and x2 < 1919/2:
+                    not_horizontals_on_the_left.append(i)
+                else:
+                    not_horizontals_on_the_right.append(i)
+                # not_horizontals.append(i)
+                # image_wo_horizontals = cv2.line(
+                #     image_wo_horizontals, (x1, y1), (x2, y2), (255, 255, 255), 1
+                # )
+        # image_intersection_points = image_with_horizontals/2 + image_wo_horizontals/2
+        # image_intersection_points[image_intersection_points < 255] = 0
+        # image_intersection_points = image_intersection_points.astype(
+        #     canny.dtype
+        # )  # 'uint8'
         '''
         dilated = numpy.zeros(canny.shape, canny.dtype)
         dilated = cv2.dilate(image_intersection_points, None, dst = dilated, iterations=2)
@@ -229,32 +238,46 @@ def draw_lines(canny, exclude=False):
                 only_corners, (nhx1, nhy1), (nhx2, nhy2), (255, 255, 255), 1
             )
         '''
-        product = itertools.product(horizontals, not_horizontals)
-        for hor, nhor in product:
-            tmp1 = numpy.zeros(canny.shape, canny.dtype)
-            tmp2 = numpy.zeros(canny.shape, canny.dtype)
-            hx1, hy1, hx2, hy2 = hor[0]
-            nhx1, nhy1, nhx2, nhy2 = nhor[0]
-            cv2.line(tmp1, (hx1, hy1), (hx2, hy2), 255, 5)
-            cv2.line(tmp2, (nhx1, nhy1), (nhx2, nhy2), (255, 255, 255), 5)
-            tmp = tmp1 / 2 + tmp2 / 2
-            tmp[tmp < 255] = 0
-            tmp = tmp.astype(
-                canny.dtype
-            )  # 'uint8'
-            if tmp.any():
-                pass
-                angle = 
+        horizontals = list(filter(lambda  x: x[0][1] > (755 - 107 )/2, horizontals))  # we only need horisontals which are under horison
+        reasons_to_turn_right, _ = reasons_to_turn(horizontals, not_horizontals_on_the_right, True, canny.shape, canny.dtype)
+        reasons_to_turn_left, image_reasons = reasons_to_turn(horizontals, not_horizontals_on_the_left, False, canny.shape, canny.dtype)
+        print(reasons_to_turn_left)
+        print(reasons_to_turn_right)
+        print('\n')
+        cv2.imwrite('./screenshots_/ihatekursach_{}.jpg'.format(timestamp), image_reasons)
+        if reasons_to_turn_right:
+            turn_right()
+            winsound.Beep(400, 100)
+            winsound.Beep(600, 100)
+        elif reasons_to_turn_left:
+            turn_left()
+            winsound.Beep(400, 100)
+            winsound.Beep(400, 100)
+            winsound.Beep(400, 100)
+        '''
+                # угол
+                # cos (theta) = (A1A2 + B1B2)/(sqrt(A1^2 + B1^2)*sqrt(A2^2 + B2^2))
+                try:
+                    cos_angle = (horA*nhorA + horB*nhorB)/(sqrt(horA**2 + horB**2)*sqrt(nhorA**2 + nhorB**2))
+                    angle = acos(cos_angle)
+                except ZeroDivisionError:
+                    continue
+                else:
+                    if angle > 0:
+                        rea
+                '''
+
                 # cv2.imwrite('./tmp/debug_{}_{}_{}_{}_{}_{}_{}_{}.jpg'.format(hx1, hy1, hx2, hy2, nhx1, nhy1, nhx2, nhy2 ), numpy.hstack((tmp1, tmp2)))
                 # todo оптимизация: тут убрать все оставшиеся itertuls.product, содержащие hor или nhor
+                # product = set(filter(lambda x: x[0] != hor and x[1] != nhor, product))
 
+        #
+        # new_image = numpy.zeros(canny.shape, canny.dtype)
+        # drawn_intersections = cv2.dilate(
+        #     image_intersection_points, None, dst=new_image, iterations=2
+        # )
 
-        new_image = numpy.zeros(canny.shape, canny.dtype)
-        drawn_intersections = cv2.dilate(
-            image_intersection_points, None, dst=new_image, iterations=2
-        )
-
-        return image_with_lines, image_with_horizontals, drawn_intersections
+        return image_with_lines#, image_with_horizontals# , drawn_intersections
 
 
 def find_corners(image):
@@ -301,3 +324,57 @@ def hypotenuse(x1, y1, x2, y2):
     res = sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
     print(res)
     return res
+
+
+def turn_right():
+    send_keys("a")
+
+
+def turn_left():
+    send_keys("d")
+
+
+def reasons_to_turn(horizontals, not_horisontals, right: bool, shape, dtype ):
+    image_reasons = numpy.zeros(shape, dtype)
+    reasons = 0
+    product = itertools.product(horizontals, not_horisontals)
+    for hor, nhor in product:
+        tmp1 = numpy.zeros(shape, dtype)
+        tmp2 = numpy.zeros(shape, dtype)
+        hx1, hy1, hx2, hy2 = hor[0]
+        nhx1, nhy1, nhx2, nhy2 = nhor[0]
+        cv2.line(tmp1, (hx1, hy1), (hx2, hy2), 255, 5)
+        cv2.line(tmp2, (nhx1, nhy1), (nhx2, nhy2), (255, 255, 255), 5)
+        tmp = tmp1 / 2 + tmp2 / 2
+        tmp[tmp < 255] = 0
+        tmp = tmp.astype(
+            dtype
+        )  # 'uint8'
+        if tmp.any():
+            pass
+            # общеее уравнение прямой по 2 точкам: (y - y1)/(y2 -y1) = (x - x1)/(x2 - x1)
+            # или в общем виде: (y1 - y2) x + (x2 - x1) y + (x1y2 - x2y1) = 0
+            horA = hy1 - hy2
+            horB = hx2 - hx1
+            horC = hx1 * hy2 - hx2 * hy1
+            nhorA = nhy1 - nhy2
+            nhorB = nhx2 - nhx1
+            nhorC = nhx1 * nhy2 - nhx2 * nhy1
+            # в виде y = kx + b нас интересует только знак k, чтобы определить, в какую сторону поворачивать, причем k интересует только у негоризонтальной прямой, т.к у горизонтальной k = 0
+            # k = -A/B
+            if nhorB == 0:
+                # we don't vertical lines. morover it's ZeroDivision
+                continue
+            else:
+                K = - (nhorA / nhorB)
+                if right and K > 0 :
+                    reasons += 1
+                    image_reasons = cv2.line(image_reasons, (hx1, hy1), (hx2, hy2), 255, 2, cv2.LINE_AA )
+                    image_reasons = cv2.line(image_reasons, (nhx1, nhy1), (nhx2, nhy2), 255, 2, cv2.LINE_AA )
+                elif not right and K <0:
+                    reasons += 1
+
+                    image_reasons = cv2.line(image_reasons, (hx1, hy1), (hx2, hy2), 255, 2, cv2.LINE_4 )
+                    image_reasons = cv2.line(image_reasons, (nhx1, nhy1), (nhx2, nhy2), 255, 2, cv2.LINE_4 )
+    return reasons, image_reasons
+

@@ -31,6 +31,20 @@ def start_game():
     send_keys("{SPACE}")
 
 
+def start_game_1_lvl():
+    send_keys("{SPACE}")
+    time.sleep(3)
+    send_keys("{DOWN}")
+    time.sleep(5)
+    send_keys("{DOWN}")
+    time.sleep(5)
+    send_keys("{SPACE}")
+    time.sleep(5)
+    send_keys("{DOWN}")
+    time.sleep(5)
+    send_keys("{SPACE}")
+
+
 def exit_game():
     time.sleep(15)
     send_keys("{ESC}")
@@ -61,8 +75,7 @@ def check_failure() -> bool:
 
 def main():
     start_app()
-    start_game()
-    time.sleep(5)
+    start_game_1_lvl()
 
     for _ in range(10 * 60):  # todo replace with while
         is_fail = check_failure()
@@ -77,7 +90,7 @@ def main():
                 import winsound
                 winsound.Beep(500, 1000)
                 raise Exception
-        time.sleep(0.3)  # todo 0.1 or less
+        time.sleep(0.1)  # todo 0.1 or less
 
     exit_game()
 
