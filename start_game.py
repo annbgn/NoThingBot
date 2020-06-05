@@ -1,3 +1,4 @@
+import argparse
 import ctypes
 import datetime
 import time
@@ -9,8 +10,6 @@ from pywinauto.keyboard import send_keys
 
 from edge_detection import detect_edge
 
-GAMEPATH = r"D:/Steam/steamapps/common/NO THING/no_thing.exe"
-
 SCREENSIZE = (
     ctypes.windll.user32.GetSystemMetrics(0),
     ctypes.windll.user32.GetSystemMetrics(1),
@@ -18,11 +17,16 @@ SCREENSIZE = (
 
 
 def start_app():
-    app = Application(backend="uia").start(GAMEPATH)
+    try:
+        app = Application(backend="uia").start(GAMEPATH)
+    except Exception as E:
+        print("Couldn't start the app\n", E)
+        return False
     dlg = app.top_window()
     play_button = dlg.child_window(title="Play!", auto_id="1", control_type="Button")
     play_button.click()
     time.sleep(5)
+    return True
 
 
 def start_game():
@@ -60,9 +64,11 @@ def check_failure() -> bool:
 
 
 def main():
-    start_app()
-    start_game()
+    is_succeeded = start_app()
+    if not is_succeeded:
+        return
     time.sleep(5)
+    start_game()
 
     for _ in range(10 * 60):  # todo replace with while
         is_fail = check_failure()
@@ -77,4 +83,14 @@ def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "path",
+        type=str,
+        help="NoThing full or relative path",
+        default=r"D:/Steam/steamapps/common/NO THING/no_thing.exe",
+    )
+    args = parser.parse_args()
+    global GAMEPATH
+    GAMEPATH = args.path
     main()
